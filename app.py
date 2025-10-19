@@ -3,16 +3,40 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pydeck as pdk
+from sklearn.datasets import fetch_california_housing
 
-# Load your cleaned dataset
-df = pd.read_csv("california_housing_clean.csv")  # make sure CSV is in same folder
+# ---------------------------
+# Load dataset directly from sklearn
+# ---------------------------
+data = fetch_california_housing(as_frame=True)
+df = data.frame
 
-# Title
+# Rename columns for consistency
+df.rename(columns={
+    'MedInc': 'MedianIncome',
+    'HouseAge': 'HouseAge',
+    'AveRooms': 'AveRooms',
+    'AveBedrms': 'AveBedrms',
+    'Population': 'Population',
+    'AveOccup': 'AveOccup',
+    'Latitude': 'Latitude',
+    'Longitude': 'Longitude',
+    'MedHouseVal': 'MedianHouseValue'
+}, inplace=True)
+
+# Create new features
+df['RoomsPerHousehold'] = df['AveRooms'] / df['AveOccup']
+df['BedroomsPerRoom'] = df['AveBedrms'] / df['AveRooms']
+df['PopulationDensity'] = df['Population'] / df['AveOccup']
+
+# ---------------------------
+# Streamlit App Layout
+# ---------------------------
 st.title("California Housing Dashboard")
 
-# Sidebar slider for Median Income
-min_income = float(df['median_income'].min())
-max_income = float(df['median_income'].max())
+# Sidebar filter: Median Income
+min_income = float(df['MedianIncome'].min())
+max_income = float(df['MedianIncome'].max())
 income_range = st.sidebar.slider(
     "Median Income (10k USD)",
     min_value=min_income,
@@ -20,15 +44,19 @@ income_range = st.sidebar.slider(
     value=(min_income, max_income)
 )
 
-# Filter dataset
-filtered_df = df[(df['median_income'] >= income_range[0]) & (df['median_income'] <= income_range[1])]
+# Filter data
+filtered_df = df[(df['MedianIncome'] >= income_range[0]) & (df['MedianIncome'] <= income_range[1])]
+st.subheader(f"Filtered Data: {len(filtered_df)} records")
 
-# Map visualization
+# ---------------------------
+# Map of House Values
+# ---------------------------
+st.subheader("House Values Map")
 st.pydeck_chart(pdk.Deck(
     map_style='mapbox://styles/mapbox/light-v9',
     initial_view_state=pdk.ViewState(
-        latitude=filtered_df['latitude'].mean(),
-        longitude=filtered_df['longitude'].mean(),
+        latitude=filtered_df['Latitude'].mean(),
+        longitude=filtered_df['Longitude'].mean(),
         zoom=7,
         pitch=0
     ),
@@ -36,26 +64,36 @@ st.pydeck_chart(pdk.Deck(
         pdk.Layer(
             "ScatterplotLayer",
             data=filtered_df,
-            get_position='[longitude, latitude]',
+            get_position='[Longitude, Latitude]',
             get_color='[255, 0, 0, 160]',
-            get_radius='median_house_value/1000',
+            get_radius='MedianHouseValue*10',
             pickable=True
         )
     ]
 ))
 
-# Scatter plot
+# ---------------------------
+# Scatter Plot: Median Income vs Median House Value
+# ---------------------------
 st.subheader("Median Income vs Median House Value")
 st.vega_lite_chart(filtered_df, {
     'mark': {'type': 'circle', 'tooltip': True},
     'encoding': {
-        'x': {'field': 'median_income', 'type': 'quantitative'},
-        'y': {'field': 'median_house_value', 'type': 'quantitative'},
-        'color': {'field': 'median_house_value', 'type': 'quantitative'},
-        'size': {'field': 'median_house_value', 'type': 'quantitative'}
+        'x': {'field': 'MedianIncome', 'type': 'quantitative', 'title': 'Median Income (10k USD)'},
+        'y': {'field': 'MedianHouseValue', 'type': 'quantitative', 'title': 'Median House Value'},
+        'color': {'field': 'MedianHouseValue', 'type': 'quantitative', 'scale': {'scheme': 'reds'}},
+        'size': {'field': 'MedianHouseValue', 'type': 'quantitative'}
     }
-})
+}, use_container_width=True)
 
-# Summary statistics
-st.subheader("Summary Statistics for Filtered Data")
+# ---------------------------
+# Summary Statistics
+# ---------------------------
+st.subheader("Summary Statistics")
 st.write(filtered_df.describe().round(2))
+
+# ---------------------------
+# Optional: show first 5 rows
+# ---------------------------
+st.subheader("Sample Data")
+st.dataframe(filtered_df.head())
